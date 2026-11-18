@@ -6,12 +6,12 @@
 // ?seed=N fixes the random pattern. ?shot=start|play|win|end (with &seed=N) stages that
 // scene instead of running the loop, paints it twice and sets window.__shotReady for a
 // screenshot.
-import { BEST_KEY, LIVES, MUTE_KEY, STEP } from './config.js';
+import { BEST_KEY, BOARD_KEY, LIVES, MUTE_KEY, STEP, UPGRADES } from './config.js';
 import { createRandom } from './random.js';
-import { createWorld, EVENT_BAD, EVENT_BOSS, EVENT_BRICK, EVENT_CRACK, EVENT_LASER, EVENT_LAUNCH, EVENT_LEVEL_CLEAR, EVENT_LIFE_LOST, EVENT_OVER, EVENT_POWERUP, EVENT_STEEL, EVENT_WIN } from './world.js';
+import { createWorld, EVENT_BAD, EVENT_BOSS, EVENT_BOSS_DEAD, EVENT_BOSS_HIT, EVENT_BRICK, EVENT_CRACK, EVENT_DRONE, EVENT_LASER, EVENT_LAUNCH, EVENT_LEVEL_CLEAR, EVENT_LIFE_LOST, EVENT_OVER, EVENT_POWERUP, EVENT_SHARD, EVENT_SHIELD_SAVE, EVENT_SINKER_LAND, EVENT_STEEL, EVENT_STUN, EVENT_WIN } from './world.js';
 import { ACTION_CONFIRM, ACTION_MUTE, ACTION_PAUSE, createInput } from './input.js';
 import { createAudio } from './audio.js';
-import { createRenderer, SCREEN_CLEAR, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN } from './render.js';
+import { createRenderer, SCREEN_CLEAR, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_SHOP, SCREEN_TITLE, SCREEN_WIN } from './render.js';
 import { stageShot } from './shots.js';
 import { LEVELS } from './levels.js';
 
@@ -39,6 +39,33 @@ function readBest() {
   } catch {
     return 0;
   }
+}
+
+/** The endless leaderboard: the top 5 runs, best score first. */
+function readBoard() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(BOARD_KEY) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((e) => typeof e?.score === 'number').slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveBoard(board) {
+  try {
+    window.localStorage.setItem(BOARD_KEY, JSON.stringify(board.slice(0, 5)));
+  } catch {
+    // See saveBest.
+  }
+}
+
+function recordEndlessRun(score, wave) {
+  const board = readBoard();
+  const date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  board.push({ score, wave, date });
+  board.sort((a, b) => b.score - a.score);
+  saveBoard(board);
+  return board;
 }
 
 function saveBest(value) {
@@ -74,6 +101,7 @@ function runShot(name) {
       levelName: LEVELS[world.state.level].name,
       clearBonus: scene.clearBonus ?? 0,
       muted: false,
+      board: scene.board ?? [],
     });
     painted += 1;
     if (painted < 2) requestAnimationFrame(paint);
@@ -86,6 +114,7 @@ function runGame() {
   const input = createInput(canvas);
   let screen = SCREEN_TITLE;
   let best = readBest();
+  let board = readBoard();
   let clearBonus = 0;
   let accumulator = 0;
   let last = performance.now();
@@ -110,6 +139,15 @@ function runGame() {
     announce(`Playing level 1, ${LEVELS[0].name}. ${LIVES} lives.`);
   }
 
+  function startEndless() {
+    world.startEndless();
+    accumulator = 0;
+    setScreen(SCREEN_PLAY);
+    audio.unlock();
+    audio.serve();
+    announce(`Endless mode, wave 1. The waves never stop.`);
+  }
+
   function endGame(won) {
     if (won) {
       setScreen(SCREEN_WIN);
@@ -124,6 +162,9 @@ function runGame() {
       best = world.state.score;
       saveBest(best);
     }
+    if (!won && world.state.endless) {
+      board = recordEndlessRun(world.state.score, world.state.wave);
+    }
   }
 
   function handleEvents(events) {
@@ -131,6 +172,13 @@ function runGame() {
     if (events & EVENT_CRACK) audio.crack();
     if (events & EVENT_STEEL) audio.steel();
     if (events & EVENT_BOSS) audio.boss();
+    if (events & EVENT_BOSS_HIT) audio.bossHit();
+    if (events & EVENT_BOSS_DEAD) audio.boss();
+    if (events & EVENT_DRONE) audio.drone();
+    if (events & EVENT_SHARD) audio.shard();
+    if (events & EVENT_SHIELD_SAVE) audio.shield();
+    if (events & EVENT_SINKER_LAND) audio.sinker();
+    if (events & EVENT_STUN) audio.bad();
     if (events & EVENT_POWERUP) audio.powerup();
     if (events & EVENT_BAD) audio.bad();
     if (events & EVENT_LASER) audio.laser();
@@ -168,6 +216,19 @@ function runGame() {
       saveMuted(audio.isMuted());
       announce(audio.isMuted() ? 'Muted.' : 'Sound on.');
     }
+    // E on a still screen starts endless mode; on the shop, digits buy upgrades.
+    const wantEndless = input.takeEndless();
+    if (wantEndless && (screen === SCREEN_TITLE || screen === SCREEN_WIN || screen === SCREEN_OVER)) {
+      startEndless();
+      confirm = false;
+    }
+    if (screen === SCREEN_SHOP) {
+      const digit = input.takeDigit();
+      if (digit >= 1 && digit <= UPGRADES.length) {
+        if (world.buyUpgrade(UPGRADES[digit - 1].id)) audio.buy();
+        else audio.denied();
+      }
+    }
     // A confirm on a still screen changes the screen and is spent: it must not also
     // serve the ball in the same frame.
     if (confirm) {
@@ -176,10 +237,19 @@ function runGame() {
         startGame();
         confirm = false;
       } else if (screen === SCREEN_CLEAR) {
-        world.loadLevel(world.state.level + 1);
+        setScreen(SCREEN_SHOP);
+        announce('Upgrade shop. Press 1 to 5 to buy, Space to continue.');
+        confirm = false;
+      } else if (screen === SCREEN_SHOP) {
+        if (world.state.endless) {
+          world.loadWave(world.state.wave + 1);
+          announce(`Wave ${world.state.wave}.`);
+        } else {
+          world.loadLevel(world.state.level + 1);
+          announce(`Playing level ${world.state.level + 1}, ${LEVELS[world.state.level].name}.`);
+        }
         accumulator = 0;
         setScreen(SCREEN_PLAY);
-        announce(`Playing level ${world.state.level + 1}, ${LEVELS[world.state.level].name}.`);
         confirm = false;
       } else if (screen === SCREEN_PAUSED) {
         setScreen(SCREEN_PLAY);
@@ -220,6 +290,7 @@ function runGame() {
       levelName: LEVELS[world.state.level].name,
       clearBonus,
       muted: audio.isMuted(),
+      board,
     });
   }
 

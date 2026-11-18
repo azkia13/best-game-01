@@ -2,14 +2,15 @@
 // playfield is scaled to fit the window and centred, the margin filled with the backdrop
 // colour. Neon glow is used where it earns its cost: the ball, the paddle and the capsules;
 // the bricks carry their colour in a flat face and a bright top edge instead.
-import { BALL, BRICK, FIELD, FONT, LIVES, MAX_LIVES, PALETTE, PADDLE } from './config.js';
-import { KIND_BONUS, KIND_BOSS, KIND_HARD, KIND_MOVING, KIND_STEEL, KIND_TOUGH, POWERUP_INFO } from './world.js';
+import { BALL, BOSS, BRICK, DRONE, FIELD, FONT, LIVES, MAX_LIVES, PALETTE, PADDLE, SINKER, UPGRADES } from './config.js';
+import { KIND_BONUS, KIND_BOSS, KIND_HARD, KIND_MOVING, KIND_SINKER, KIND_STEEL, KIND_TOUGH, POWERUP_INFO } from './world.js';
 import { LEVELS } from './levels.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
 export const SCREEN_PAUSED = 'paused';
 export const SCREEN_CLEAR = 'clear';
+export const SCREEN_SHOP = 'shop';
 export const SCREEN_WIN = 'win';
 export const SCREEN_OVER = 'over';
 
@@ -123,6 +124,22 @@ export function createRenderer(canvas) {
           context.arc(brick.x + brick.width / 2 + (i - (brick.maxHp - 1) / 2) * 13, brick.y + brick.height - 7, 3, 0, Math.PI * 2);
           context.fill();
         }
+      } else if (brick.kind === KIND_SINKER) {
+        // A sinking brick flashes red as it nears the paddle line.
+        if (brick.y > SINKER.dangerY - 140) {
+          const pulse = 0.4 + 0.4 * Math.sin(state.elapsed * 10);
+          context.strokeStyle = `rgba(255,84,112,${pulse.toFixed(2)})`;
+          context.lineWidth = 3;
+          roundRect(context, brick.x - 2, brick.y - 2, brick.width + 4, brick.height + 4, 7);
+          context.stroke();
+        }
+        context.fillStyle = 'rgba(255,255,255,0.75)';
+        context.beginPath();
+        context.moveTo(brick.x + brick.width / 2, brick.y + brick.height - 6);
+        context.lineTo(brick.x + brick.width / 2 - 7, brick.y + brick.height - 16);
+        context.lineTo(brick.x + brick.width / 2 + 7, brick.y + brick.height - 16);
+        context.closePath();
+        context.fill();
       } else if (brick.kind === KIND_MOVING) {
         // A double arrow: this brick slides sideways.
         const cy = brick.y + brick.height / 2;
@@ -175,6 +192,8 @@ export function createRenderer(canvas) {
     const paddle = state.paddle;
     const y = PADDLE.y;
     context.save();
+    // Hurt protection blinks the paddle: the player can see the safe window.
+    if (state.hurtTimer > 0 && Math.floor(state.elapsed * 12) % 2 === 0) context.globalAlpha = 0.45;
     context.shadowColor = PALETTE.paddle;
     context.shadowBlur = 18;
     context.fillStyle = PALETTE.paddle;
@@ -248,6 +267,98 @@ export function createRenderer(canvas) {
     }
   }
 
+  function drawEnemies(state) {
+    for (const drone of state.enemies) {
+      const spin = state.elapsed * 3;
+      context.save();
+      context.translate(drone.x, drone.y);
+      context.rotate(Math.sin(spin) * 0.2);
+      context.shadowColor = '#c084fc';
+      context.shadowBlur = 14;
+      context.fillStyle = '#7c3aed';
+      context.beginPath();
+      context.arc(0, 0, DRONE.radius, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+      // Spikes and one angry eye: a drone is not a brick.
+      context.strokeStyle = '#c084fc';
+      context.lineWidth = 2;
+      for (let i = 0; i < 6; i += 1) {
+        const a = (i / 6) * Math.PI * 2 + spin * 0.3;
+        context.beginPath();
+        context.moveTo(drone.x + Math.cos(a) * DRONE.radius, drone.y + Math.sin(a) * DRONE.radius);
+        context.lineTo(drone.x + Math.cos(a) * (DRONE.radius + 7), drone.y + Math.sin(a) * (DRONE.radius + 7));
+        context.stroke();
+      }
+      context.fillStyle = '#ff5470';
+      context.beginPath();
+      context.arc(drone.x, drone.y, 5, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = '#ffffff';
+      context.beginPath();
+      context.arc(drone.x - 1.5, drone.y - 1.5, 2, 0, Math.PI * 2);
+      context.fill();
+    }
+  }
+
+  function drawBoss(state) {
+    const boss = state.boss;
+    if (!boss) return;
+    const pulse = 0.6 + 0.4 * Math.sin(state.elapsed * 4);
+    context.save();
+    context.shadowColor = '#ff5470';
+    context.shadowBlur = 30 * pulse;
+    const gradient = context.createRadialGradient(boss.x - 12, boss.y - 12, 6, boss.x, boss.y, BOSS.radius);
+    gradient.addColorStop(0, '#ff8ba0');
+    gradient.addColorStop(0.55, '#ff5470');
+    gradient.addColorStop(1, '#8f1d3a');
+    context.fillStyle = gradient;
+    context.beginPath();
+    context.arc(boss.x, boss.y, BOSS.radius, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+    // Rings and a glaring core eye.
+    context.strokeStyle = 'rgba(255,139,160,0.7)';
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(boss.x, boss.y, BOSS.radius - 10, 0, Math.PI * 2);
+    context.stroke();
+    context.fillStyle = '#1a050d';
+    context.beginPath();
+    context.arc(boss.x, boss.y, 16, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = '#ffd60a';
+    context.beginPath();
+    context.arc(boss.x, boss.y, 8, 0, Math.PI * 2);
+    context.fill();
+    // The boss HP bar across the top of the field.
+    const barWidth = 420;
+    const bx = (FIELD.width - barWidth) / 2;
+    const by = 52;
+    context.fillStyle = 'rgba(255,255,255,0.14)';
+    context.fillRect(bx, by, barWidth, 10);
+    context.fillStyle = '#ff5470';
+    context.fillRect(bx, by, barWidth * (boss.hp / boss.maxHp), 10);
+    text(`THE CORE  ${boss.hp}/${boss.maxHp}`, FIELD.width / 2, by + 26, 15, '#ff8ba0', 'center', 800);
+  }
+
+  function drawProjectiles(state) {
+    for (const shot of state.projectiles) {
+      context.save();
+      context.shadowColor = '#ff5470';
+      context.shadowBlur = 12;
+      context.fillStyle = '#ff5470';
+      context.beginPath();
+      context.arc(shot.x, shot.y, BOSS.projectileRadius, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+      context.fillStyle = '#ffffff';
+      context.beginPath();
+      context.arc(shot.x, shot.y, 3, 0, Math.PI * 2);
+      context.fill();
+    }
+  }
+
   function drawParticles(state) {
     for (const p of state.particles) {
       context.globalAlpha = Math.max(0, p.life / p.maxLife);
@@ -266,10 +377,14 @@ export function createRenderer(canvas) {
     context.globalAlpha = 1;
   }
 
-  function drawHud(state, levelName) {
+  function drawHud(state, levelName, ui) {
     context.textBaseline = 'top';
     text(`SCORE ${state.score}`, 24, HUD_TOP, 26, PALETTE.text, 'left', 700);
-    text(`LEVEL ${state.level + 1} · ${levelName}`, FIELD.width / 2, HUD_TOP, 22, PALETTE.muted, 'center', 600);
+    const levelLabel = state.endless ? `WAVE ${state.wave}` : `LEVEL ${state.level + 1} · ${levelName}`;
+    text(levelLabel, FIELD.width / 2, HUD_TOP, 22, PALETTE.muted, 'center', 600);
+    // Shards and the shield live at the bottom-left, clear of the progress bar.
+    text(`◆ ${state.shards}`, 24, FIELD.height - 34, 20, PALETTE.gold, 'left', 800);
+    if (state.shieldReady) text('AEGIS READY', 110, FIELD.height - 34, 16, '#7dd3fc', 'left', 800);
     const livesLabel = 'LIVES ';
     const livesWidth = context.measureText(livesLabel).width + MAX_LIVES * 22;
     let lx = FIELD.width - 24 - livesWidth;
@@ -317,8 +432,46 @@ export function createRenderer(canvas) {
     text(prompt, FIELD.width / 2, y + height - 38, 23, PALETTE.gold, 'center', 700);
   }
 
+  function drawShop(state, ui) {
+    const width = 760;
+    const height = 150 + UPGRADES.length * 44 + 96;
+    const x = (FIELD.width - width) / 2;
+    const y = (FIELD.height - height) / 2;
+    context.fillStyle = 'rgba(4,6,14,0.45)';
+    context.fillRect(0, 0, FIELD.width, FIELD.height);
+    context.fillStyle = PALETTE.panel;
+    roundRect(context, x, y, width, height, 14);
+    context.fill();
+    context.strokeStyle = PALETTE.panelEdge;
+    context.lineWidth = 2;
+    roundRect(context, x, y, width, height, 14);
+    context.stroke();
+    context.textBaseline = 'alphabetic';
+    text('UPGRADE SHOP', FIELD.width / 2, y + 62, 40, PALETTE.gold, 'center', 800);
+    text(`Shards ◆ ${state.shards}  ·  press 1–5 to buy, Space to continue`, FIELD.width / 2, y + 96, 20, PALETTE.muted, 'center', 400);
+    for (let i = 0; i < UPGRADES.length; i += 1) {
+      const up = UPGRADES[i];
+      const owned = state.upgrades[up.id] ?? 0;
+      const maxed = owned >= up.max;
+      const afford = !maxed && state.shards >= up.cost;
+      const rowY = y + 132 + i * 44;
+      context.fillStyle = maxed ? 'rgba(255,255,255,0.05)' : afford ? 'rgba(242,201,76,0.10)' : 'rgba(255,255,255,0.03)';
+      roundRect(context, x + 24, rowY, width - 48, 36, 8);
+      context.fill();
+      text(`[${up.key}] ${up.name}`, x + 40, rowY + 24, 20, maxed ? PALETTE.muted : PALETTE.text, 'left', 700);
+      text(up.blurb, x + 330, rowY + 24, 17, PALETTE.muted, 'left', 400);
+      text(maxed ? 'MAXED' : `◆ ${up.cost}${owned > 0 ? `  ×${owned}` : ''}`, x + width - 40, rowY + 24, 20, maxed ? PALETTE.muted : afford ? PALETTE.gold : PALETTE.danger, 'right', 800);
+    }
+    text('Upgrades are permanent for this run.', FIELD.width / 2, y + height - 34, 18, PALETTE.muted, 'center', 400);
+  }
+
+  function drawBoardLines(board) {
+    if (!board || board.length === 0) return ['No endless runs yet — press E on the title to try.'];
+    return board.slice(0, 5).map((entry, i) => `${i + 1}.  ${entry.score} pts · wave ${entry.wave} · ${entry.date}`);
+  }
+
   function draw(state, screen, ui) {
-    const { best, levelName, clearBonus, muted } = ui;
+    const { best, levelName, clearBonus, muted, board } = ui;
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.fillStyle = PALETTE.backdrop;
     context.fillRect(0, 0, canvas.width, canvas.height);
@@ -327,6 +480,9 @@ export function createRenderer(canvas) {
     context.setTransform(view.scale, 0, 0, view.scale, view.x + shakeX * view.scale, view.y + shakeY * view.scale);
     drawBackdrop();
     drawBricks(state);
+    drawEnemies(state);
+    drawBoss(state);
+    drawProjectiles(state);
     drawPowerups(state);
     drawBullets(state);
     drawPaddle(state);
@@ -334,36 +490,46 @@ export function createRenderer(canvas) {
     drawParticles(state);
     drawFloaters(state);
     if (screen === SCREEN_TITLE) {
+      const boardLines = drawBoardLines(board);
       drawPanel('NEON BREAKER', [
         'Break every brick. Keep the ball alive.',
         'Mouse or ← → to move · Space to serve and fire',
         'Catch the falling capsules — some help, some hurt.',
-        `${LEVELS.length} levels · ${LIVES} lives · best ${best}`,
-      ], 'Press Space or click to start');
+        `${LEVELS.length} levels · drones · sinking bricks · a boss · endless mode`,
+        `Best ${best} · Shards buy upgrades between levels`,
+        ...boardLines.map((line) => `★ ${line}`),
+      ], 'Space to start · E for Endless');
       return;
     }
-    drawHud(state, levelName);
+    drawHud(state, levelName, ui);
     if (muted) text('MUTED', FIELD.width - 24, FIELD.height - 34, 16, PALETTE.muted, 'right', 600);
     if (screen === SCREEN_PAUSED) {
       drawPanel('Paused', ['The ball waits for you.'], 'Press P to resume');
+    } else if (screen === SCREEN_SHOP) {
+      drawShop(state, ui);
     } else if (screen === SCREEN_CLEAR) {
       const next = LEVELS[Math.min(state.level + 1, LEVELS.length - 1)];
-      drawPanel(`Level ${state.level + 1} clear!`, [
+      const nextLine = state.endless
+        ? `Next: wave ${state.wave + 1} — it only gets harder.`
+        : `Next: ${next.name} — ${next.tip}`;
+      drawPanel(state.endless ? `Wave ${state.wave} clear!` : `Level ${state.level + 1} clear!`, [
         `${levelName} is done.`,
-        `Level bonus +${clearBonus} · Score ${state.score}`,
-        `Next: ${next.name} — ${next.tip}`,
-      ], 'Press Space for the next level', PALETTE.gold);
+        `Level bonus +${clearBonus} · Score ${state.score} · Shards ◆ ${state.shards}`,
+        nextLine,
+      ], 'Press Space for the upgrade shop', PALETTE.gold);
     } else if (screen === SCREEN_WIN) {
       drawPanel('YOU WIN!', [
-        `All ${LEVELS.length} levels cleared.`,
+        `All ${LEVELS.length} levels cleared — including the Core.`,
         `Final score ${state.score} · Best ${Math.max(best, state.score)}`,
         state.score >= best && best > 0 ? 'A new best score!' : 'The neon is yours.',
-      ], 'Press Space to play again', PALETTE.gold);
+      ], 'Space to play again · E for Endless');
     } else if (screen === SCREEN_OVER) {
-      drawPanel('Game over', [
+      const boardLines = drawBoardLines(board);
+      drawPanel(state.endless ? `Endless over — wave ${state.wave}` : 'Game over', [
         `Score ${state.score} · Best ${Math.max(best, state.score)}`,
         state.score >= best && best > 0 ? 'A new best score!' : 'The bricks win this time.',
         '',
+        ...(state.endless ? boardLines.map((line) => `★ ${line}`) : []),
       ], 'Press Space or click to play again', PALETTE.danger);
     }
   }

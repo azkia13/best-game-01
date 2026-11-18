@@ -107,6 +107,34 @@ export function createAudio() {
       tone(90, 0.3, 'sawtooth', 0.55, 45);
       arpeggio([784, 1047, 1319], 0.06, 'sine', 0.45);
     },
+    /** A drone pops. */
+    drone() {
+      tone(520, 0.08, 'square', 0.4, 1200);
+    },
+    /** A hit lands on the boss: a heavy thud. */
+    bossHit() {
+      tone(180, 0.1, 'sawtooth', 0.45, 90);
+    },
+    /** Shards clink into the purse. */
+    shard() {
+      tone(1320, 0.07, 'sine', 0.35, 1760);
+    },
+    /** The Aegis shield saves the ball. */
+    shield() {
+      arpeggio([880, 1175, 1568], 0.07, 'sine', 0.5);
+    },
+    /** A sinking brick lands: a low thud of lost ground. */
+    sinker() {
+      tone(110, 0.25, 'sawtooth', 0.5, 55);
+    },
+    /** A shop purchase: a bright coin chime. */
+    buy() {
+      arpeggio([988, 1319], 0.06, 'sine', 0.5);
+    },
+    /** A purchase that cannot happen: a dull buzz. */
+    denied() {
+      tone(160, 0.12, 'square', 0.35, 120);
+    },
     /** A level is cleared: a rising arpeggio. */
     levelClear() {
       arpeggio([523, 659, 784, 1047], 0.09, 'triangle', 0.5);

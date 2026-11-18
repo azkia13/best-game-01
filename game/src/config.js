@@ -11,7 +11,7 @@ export const PADDLE = {
   width: 112,
   height: 16,
   y: 662,
-  speed: 760,
+  speed: 820,
   wide: 168,
   narrow: 72,
   laserWidth: 92,
@@ -21,7 +21,7 @@ export const BALL = {
   radius: 8,
   speed: 540,
   maxSpeed: 980,
-  speedPerLevel: 34,
+  speedPerLevel: 28,
   minUpward: 0.35,
 };
 
@@ -50,7 +50,35 @@ export const POWERUP = {
 };
 
 /** Points for one brick, before the combo multiplier; clearing a level pays a bonus per life left. */
-export const SCORE = { brick: 50, hard: 80, tough: 120, bonus: 150, boss: 500, levelBonus: 500 };
+export const SCORE = { brick: 50, hard: 80, tough: 120, bonus: 150, boss: 500, levelBonus: 500, drone: 200, bossHit: 25, projectile: 10 };
+
+/** Shards (◆) are the shop currency: bonus bricks, boss bricks and drones drop them. */
+export const SHARDS = { bonus: 2, boss: 5, drone: 3 };
+
+/** The upgrade shop between levels: id, key, name, cost in shards, what it does, max stacks. */
+export const UPGRADES = [
+  { id: 'wide', key: '1', name: 'Wide Paddle +', cost: 6, blurb: '+20 paddle width, forever', max: 3 },
+  { id: 'magnet', key: '2', name: 'Magnet Paddle', cost: 10, blurb: 'Balls stick to the paddle', max: 1 },
+  { id: 'laser', key: '3', name: 'Laser Overclock', cost: 8, blurb: 'Laser fires twice as fast, lasts longer', max: 2 },
+  { id: 'shield', key: '4', name: 'Aegis Shield', cost: 10, blurb: 'One free ball-save per level', max: 1 },
+  { id: 'life', key: '5', name: 'Extra Life', cost: 12, blurb: '+1 life, right now (max 5)', max: 99 },
+];
+
+/** Boss fight tuning (level 12 and every 5th endless wave). */
+export const BOSS = {
+  radius: 54, y: 150, hp: 14, hpPerWave: 2,
+  fireInterval: 3.6, projectileSpeed: 175, projectileRadius: 7,
+  spawnInterval: 12,
+};
+
+/** Drones: the moving enemies that patrol the upper field. */
+export const DRONE = { radius: 14, speed: 130, spawnInterval: 6, maxAlive: 4 };
+
+/** Sinking bricks fall toward the paddle line; one that lands costs a life. */
+export const SINKER = { fallSpeed: 9, dangerY: 560 };
+
+/** Endless mode: waves keep coming after the campaign is won. */
+export const ENDLESS = { bossEvery: 5, baseRows: 3, maxRows: 6 };
 
 /** How long each timed effect lasts, in seconds. */
 export const DURATION = { wide: 14, narrow: 10, laser: 12, slow: 9, fast: 8, catch: 14, pierce: 8 };
@@ -87,3 +115,5 @@ export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 /** Where the best score is kept between visits (this browser only). */
 export const BEST_KEY = 'neon-breaker.best';
 export const MUTE_KEY = 'neon-breaker.muted';
+/** Top 5 endless runs: [{ score, wave, date }] as JSON. */
+export const BOARD_KEY = 'neon-breaker.board';

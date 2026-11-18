@@ -6,8 +6,8 @@ import { EVENT_LEVEL_CLEAR, EVENT_OVER, EVENT_WIN, KIND_STEEL } from './world.js
 import { SCREEN_CLEAR, SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN } from './render.js';
 
 const START_SECONDS = 4;
-const PLAY_SECONDS = 26;
-const LIMIT_SECONDS = 300;
+const PLAY_SECONDS = 40;
+const LIMIT_SECONDS = 600;
 const SAMPLE = 1 / 60;
 
 /** Where the ball will cross the paddle's line, from its current flight. */
@@ -31,17 +31,49 @@ function landingX(ball) {
 function autopilot(state, skill, random) {
   const ball = state.balls.find((b) => !b.stuck);
   if (!ball) return 0;
+  // Dodge boss fire: a shot falling onto the paddle's span means step aside —
+  // but only while the ball is not about to land; catching the ball comes first.
+  // The whole threatening volley is dodged at once, by its mean x, so dodging
+  // one shot of a pair never walks the paddle into the other.
+  const ballIncoming = ball.vy > 0 && (PADDLE.y - ball.y) / ball.vy < 0.45;
+  if (!ballIncoming) {
+    const centre = state.paddle.x + state.paddle.width / 2;
+    let sum = 0;
+    let count = 0;
+    for (const shot of state.projectiles) {
+      if (shot.vy > 0 && shot.y > PADDLE.y - 340 && shot.y < PADDLE.y && Math.abs(shot.x - centre) < state.paddle.width / 2 + 12) {
+        sum += shot.x;
+        count += 1;
+      }
+    }
+    if (count > 0) return sum / count > centre ? -1 : 1;
+  }
   const target = landingX(ball);
   const centre = state.paddle.x + state.paddle.width / 2;
-  // Aim at the lowest brick still standing, nearest to the ball's line.
+  // Aim at the lowest brick still standing, nearest to the ball's line — or at the
+  // boss, once the bricks are gone.
+  let aimX = null;
+  let aimY = null;
   let brick = null;
   for (const b of state.bricks) {
     if (!b.alive || b.kind === KIND_STEEL) continue;
     if (brick === null || b.y > brick.y || (b.y === brick.y && Math.abs(b.x + b.width / 2 - ball.x) < Math.abs(brick.x + brick.width / 2 - ball.x))) brick = b;
   }
-  let wanted = target > centre + 10 ? 1 : target < centre - 10 ? -1 : 0;
   if (brick !== null) {
-    const aim = Math.atan2(brick.x + brick.width / 2 - target, PADDLE.y - brick.y);
+    aimX = brick.x + brick.width / 2;
+    aimY = brick.y;
+  } else if (state.boss) {
+    aimX = state.boss.x;
+    aimY = state.boss.y;
+  }
+  // Once the wall is nearly down, the boss is the target — don't chase the last bricks.
+  if (state.boss && state.bricksLeft <= 6) {
+    aimX = state.boss.x;
+    aimY = state.boss.y;
+  }
+  let wanted = target > centre + 10 ? 1 : target < centre - 10 ? -1 : 0;
+  if (aimX !== null) {
+    const aim = Math.atan2(aimX - target, PADDLE.y - aimY);
     const offset = Math.max(-0.85, Math.min(0.85, aim / (Math.PI / 3)));
     const aimCentre = target - offset * (state.paddle.width / 2);
     wanted = aimCentre > centre + 10 ? 1 : aimCentre < centre - 10 ? -1 : 0;
@@ -74,22 +106,22 @@ export function stageShot(name, world, random) {
     for (let index = 0; index < START_SECONDS / STEP; index += 1) {
       world.step(STEP, { dir: autopilot(world.state, 1, random), pointerFieldX: null, confirm: false }, true);
     }
-    return { screen: SCREEN_TITLE, best: 0 };
+    return { screen: SCREEN_TITLE, best: 0, board: [] };
   }
   if (name === 'play') {
-    // The play shot stages level 7, Neon Drift: drifting bricks in mid-flight.
-    world.loadLevel(6);
+    // The play shot stages level 12, the boss fight: the Core firing, drones out.
+    world.loadLevel(11);
     playForward(world, PLAY_SECONDS, 1, random);
-    return { screen: SCREEN_PLAY, best: world.state.score };
+    return { screen: SCREEN_PLAY, best: world.state.score, board: [] };
   }
   if (name === 'win') {
     // Play level one for real until it is cleared: the level-clear panel is the win shot.
     const events = playForward(world, LIMIT_SECONDS, 1, random);
-    if (events & EVENT_LEVEL_CLEAR) return { screen: SCREEN_CLEAR, best: world.state.score, clearBonus: world.state.lastBonus };
-    return { screen: SCREEN_PLAY, best: world.state.score };
+    if (events & EVENT_LEVEL_CLEAR) return { screen: SCREEN_CLEAR, best: world.state.score, clearBonus: world.state.lastBonus, board: [] };
+    return { screen: SCREEN_PLAY, best: world.state.score, board: [] };
   }
   // End: a hurried pilot that reads the ball late and often goes the wrong way.
   const events = playForward(world, LIMIT_SECONDS, 0.15, random);
-  if (events & EVENT_OVER) return { screen: SCREEN_OVER, best: world.state.score };
-  return { screen: SCREEN_PLAY, best: world.state.score };
+  if (events & EVENT_OVER) return { screen: SCREEN_OVER, best: world.state.score, board: [] };
+  return { screen: SCREEN_PLAY, best: world.state.score, board: [] };
 }

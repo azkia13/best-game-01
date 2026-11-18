@@ -10,11 +10,15 @@ const RIGHT = new Set(['ArrowRight', 'KeyD']);
 const CONFIRM = new Set(['Space', 'Enter']);
 const PAUSE = new Set(['KeyP', 'Escape']);
 const MUTE = new Set(['KeyM']);
+const DIGITS = new Set(['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5']);
+const ENDLESS = new Set(['KeyE']);
 
 export function createInput(target) {
   let left = false;
   let right = false;
   let actions = 0;
+  let digit = 0;
+  let endless = false;
   let pointerX = null;
   let pointerSeen = false;
 
@@ -27,6 +31,10 @@ export function createInput(target) {
       if (!event.repeat) actions |= ACTION_PAUSE;
     } else if (MUTE.has(event.code)) {
       if (!event.repeat) actions |= ACTION_MUTE;
+    } else if (DIGITS.has(event.code)) {
+      if (!event.repeat) digit = Number(event.code.slice(-1));
+    } else if (ENDLESS.has(event.code)) {
+      if (!event.repeat) endless = true;
     } else return;
     event.preventDefault();
   });
@@ -62,6 +70,18 @@ export function createInput(target) {
     takeActions() {
       const taken = actions;
       actions = 0;
+      return taken;
+    },
+    /** The shop digit (1-5) pressed since the last call, or 0. */
+    takeDigit() {
+      const taken = digit;
+      digit = 0;
+      return taken;
+    },
+    /** True once when E was pressed since the last call (endless mode). */
+    takeEndless() {
+      const taken = endless;
+      endless = false;
       return taken;
     },
   };
