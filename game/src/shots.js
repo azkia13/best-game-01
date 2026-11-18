@@ -77,6 +77,8 @@ export function stageShot(name, world, random) {
     return { screen: SCREEN_TITLE, best: 0 };
   }
   if (name === 'play') {
+    // The play shot stages level 7, Neon Drift: drifting bricks in mid-flight.
+    world.loadLevel(6);
     playForward(world, PLAY_SECONDS, 1, random);
     return { screen: SCREEN_PLAY, best: world.state.score };
   }

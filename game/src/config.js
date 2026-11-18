@@ -50,10 +50,10 @@ export const POWERUP = {
 };
 
 /** Points for one brick, before the combo multiplier; clearing a level pays a bonus per life left. */
-export const SCORE = { brick: 50, hard: 80, tough: 120, bonus: 150, levelBonus: 500 };
+export const SCORE = { brick: 50, hard: 80, tough: 120, bonus: 150, boss: 500, levelBonus: 500 };
 
 /** How long each timed effect lasts, in seconds. */
-export const DURATION = { wide: 14, narrow: 10, laser: 12, slow: 9, fast: 8, catch: 14 };
+export const DURATION = { wide: 14, narrow: 10, laser: 12, slow: 9, fast: 8, catch: 14, pierce: 8 };
 
 /** Seconds the ball waits stuck to the paddle before the autopilot serves it in a screenshot. */
 export const SERVE_WAIT = 0.6;
@@ -72,6 +72,9 @@ export const PALETTE = {
   ballTrail: '#22d3ee',
   unbreakable: '#7d8598',
   unbreakableDark: '#565e73',
+  moving: '#38bdf8',
+  boss: '#ff5470',
+  ghost: '#7dd3fc',
   panel: '#10182e',
   panelEdge: '#2a3a5f',
   danger: '#ff5470',

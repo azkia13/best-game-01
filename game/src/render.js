@@ -3,7 +3,7 @@
 // colour. Neon glow is used where it earns its cost: the ball, the paddle and the capsules;
 // the bricks carry their colour in a flat face and a bright top edge instead.
 import { BALL, BRICK, FIELD, FONT, LIVES, MAX_LIVES, PALETTE, PADDLE } from './config.js';
-import { KIND_BONUS, KIND_HARD, KIND_STEEL, KIND_TOUGH, POWERUP_INFO } from './world.js';
+import { KIND_BONUS, KIND_BOSS, KIND_HARD, KIND_MOVING, KIND_STEEL, KIND_TOUGH, POWERUP_INFO } from './world.js';
 import { LEVELS } from './levels.js';
 
 export const SCREEN_TITLE = 'title';
@@ -103,12 +103,44 @@ export function createRenderer(canvas) {
   function drawBricks(state) {
     for (const brick of state.bricks) {
       if (!brick.alive) continue;
-      const dim = brick.kind === KIND_HARD || brick.kind === KIND_TOUGH ? 0.62 + 0.19 * brick.hp : 1;
+      const dim = brick.kind === KIND_BOSS ? 0.55 + 0.09 * brick.hp
+        : (brick.kind === KIND_HARD || brick.kind === KIND_TOUGH || brick.kind === KIND_MOVING) ? 0.62 + 0.19 * brick.hp : 1;
       context.fillStyle = shade(brick.color, dim);
       roundRect(context, brick.x, brick.y, brick.width, brick.height, 5);
       context.fill();
       context.fillStyle = 'rgba(255,255,255,0.28)';
       context.fillRect(brick.x + 4, brick.y + 3, brick.width - 8, 4);
+      if (brick.kind === KIND_BOSS) {
+        // A pulsing frame and one pip per hit left: the boss is the brick to watch.
+        const pulse = 0.45 + 0.35 * Math.sin(state.elapsed * 5);
+        context.strokeStyle = `rgba(255,84,112,${pulse.toFixed(2)})`;
+        context.lineWidth = 3;
+        roundRect(context, brick.x - 2, brick.y - 2, brick.width + 4, brick.height + 4, 7);
+        context.stroke();
+        for (let i = 0; i < brick.maxHp; i += 1) {
+          context.fillStyle = i < brick.hp ? '#ffffff' : 'rgba(255,255,255,0.22)';
+          context.beginPath();
+          context.arc(brick.x + brick.width / 2 + (i - (brick.maxHp - 1) / 2) * 13, brick.y + brick.height - 7, 3, 0, Math.PI * 2);
+          context.fill();
+        }
+      } else if (brick.kind === KIND_MOVING) {
+        // A double arrow: this brick slides sideways.
+        const cy = brick.y + brick.height / 2;
+        context.strokeStyle = 'rgba(255,255,255,0.8)';
+        context.lineWidth = 2;
+        context.beginPath();
+        context.moveTo(brick.x + 14, cy);
+        context.lineTo(brick.x + brick.width - 14, cy);
+        context.moveTo(brick.x + 14, cy);
+        context.lineTo(brick.x + 20, cy - 4);
+        context.moveTo(brick.x + 14, cy);
+        context.lineTo(brick.x + 20, cy + 4);
+        context.moveTo(brick.x + brick.width - 14, cy);
+        context.lineTo(brick.x + brick.width - 20, cy - 4);
+        context.moveTo(brick.x + brick.width - 14, cy);
+        context.lineTo(brick.x + brick.width - 20, cy + 4);
+        context.stroke();
+      }
       if (brick.kind === KIND_STEEL) {
         context.fillStyle = PALETTE.unbreakableDark;
         context.fillRect(brick.x + 8, brick.y + brick.height / 2 - 2, brick.width - 16, 4);
@@ -117,7 +149,7 @@ export function createRenderer(canvas) {
         context.fillRect(brick.x + brick.width - 13, brick.y + 6, 3, 3);
       } else if (brick.kind === KIND_BONUS) {
         text('★', brick.x + brick.width / 2, brick.y + brick.height / 2 + 7, 18, '#3a2b00', 'center', 700);
-      } else if (brick.hp === 2) {
+      } else if (brick.hp === 2 && brick.kind !== KIND_MOVING && brick.kind !== KIND_BOSS) {
         context.strokeStyle = 'rgba(0,0,0,0.45)';
         context.lineWidth = 2;
         context.beginPath();
@@ -125,7 +157,7 @@ export function createRenderer(canvas) {
         context.lineTo(brick.x + brick.width / 2, brick.y + brick.height / 2);
         context.lineTo(brick.x + brick.width - 14, brick.y + 6);
         context.stroke();
-      } else if (brick.hp === 3) {
+      } else if (brick.hp === 3 && brick.kind !== KIND_BOSS) {
         context.strokeStyle = 'rgba(0,0,0,0.5)';
         context.lineWidth = 2;
         context.beginPath();
@@ -166,8 +198,18 @@ export function createRenderer(canvas) {
 
   function drawBalls(state) {
     for (const ball of state.balls) {
+      if (state.pierce > 0) {
+        // A ghost ball wears a pale halo: it passes through bricks.
+        context.save();
+        context.globalAlpha = 0.22 + 0.1 * Math.sin(state.elapsed * 6);
+        context.fillStyle = PALETTE.ghost;
+        context.beginPath();
+        context.arc(ball.x, ball.y, BALL.radius + 7, 0, Math.PI * 2);
+        context.fill();
+        context.restore();
+      }
       context.save();
-      context.shadowColor = PALETTE.ballTrail;
+      context.shadowColor = state.pierce > 0 ? PALETTE.ghost : PALETTE.ballTrail;
       context.shadowBlur = 16;
       context.fillStyle = PALETTE.ball;
       context.beginPath();
@@ -175,7 +217,7 @@ export function createRenderer(canvas) {
       context.fill();
       context.restore();
       if (!ball.stuck) {
-        context.strokeStyle = 'rgba(34,211,238,0.45)';
+        context.strokeStyle = state.pierce > 0 ? 'rgba(125,211,252,0.55)' : 'rgba(34,211,238,0.45)';
         context.lineWidth = 3;
         context.beginPath();
         context.moveTo(ball.x - ball.vx * 0.03, ball.y - ball.vy * 0.03);
@@ -242,6 +284,9 @@ export function createRenderer(canvas) {
     if (state.mult > 1) {
       text(`COMBO ×${state.mult}`, FIELD.width - 24, HUD_TOP + 34, 20, PALETTE.gold, 'right', 800);
     }
+    if (state.pierce > 0) {
+      text('GHOST BALL', FIELD.width - 24, HUD_TOP + 60, 18, PALETTE.ghost, 'right', 800);
+    }
     // Thin progress bar: how much of this level is cleared.
     const total = state.bricks.length > 0 ? state.bricks.filter((b) => b.kind !== KIND_STEEL).length : 1;
     const done = total - state.bricksLeft;
@@ -302,10 +347,11 @@ export function createRenderer(canvas) {
     if (screen === SCREEN_PAUSED) {
       drawPanel('Paused', ['The ball waits for you.'], 'Press P to resume');
     } else if (screen === SCREEN_CLEAR) {
+      const next = LEVELS[Math.min(state.level + 1, LEVELS.length - 1)];
       drawPanel(`Level ${state.level + 1} clear!`, [
         `${levelName} is done.`,
         `Level bonus +${clearBonus} · Score ${state.score}`,
-        `Next: ${LEVELS[Math.min(state.level + 1, LEVELS.length - 1)].name}`,
+        `Next: ${next.name} — ${next.tip}`,
       ], 'Press Space for the next level', PALETTE.gold);
     } else if (screen === SCREEN_WIN) {
       drawPanel('YOU WIN!', [

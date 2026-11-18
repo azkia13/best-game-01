@@ -17,12 +17,15 @@ export const EVENT_WIN = 128;
 export const EVENT_OVER = 256;
 export const EVENT_LAUNCH = 512;
 export const EVENT_LASER = 1024;
+export const EVENT_BOSS = 2048;
 
 export const KIND_NORMAL = 0;
 export const KIND_HARD = 1;
 export const KIND_TOUGH = 2;
 export const KIND_STEEL = 3;
 export const KIND_BONUS = 4;
+export const KIND_MOVING = 5;
+export const KIND_BOSS = 6;
 
 /** The capsule letters, what they do, and whether catching one is good news. */
 export const POWERUP_INFO = {
@@ -32,12 +35,13 @@ export const POWERUP_INFO = {
   S: { label: 'Slow ball', good: true, color: '#3ddc84' },
   E: { label: 'Extra life', good: true, color: '#f2c94c' },
   C: { label: 'Catch', good: true, color: '#a855f7' },
+  G: { label: 'Ghost ball', good: true, color: '#7dd3fc' },
   N: { label: 'Narrow paddle', good: false, color: '#8b93b8' },
   F: { label: 'Fast ball', good: false, color: '#ff8a00' },
 };
-const POWERUP_KEYS = ['W', 'M', 'L', 'S', 'E', 'C', 'N', 'F'];
+const POWERUP_KEYS = ['W', 'M', 'L', 'S', 'E', 'C', 'G', 'N', 'F'];
 /** How often each capsule is the one that drops, out of 100. */
-const POWERUP_WEIGHTS = { W: 20, M: 18, L: 16, S: 14, E: 6, C: 12, N: 7, F: 7 };
+const POWERUP_WEIGHTS = { W: 18, M: 16, L: 14, S: 12, E: 6, C: 12, G: 10, N: 6, F: 6 };
 
 const MAX_PARTICLES = 400;
 const LASER_COOLDOWN = 0.18;
@@ -58,7 +62,7 @@ export function createWorld(random) {
   const state = {
     paddle, balls, bricks, powerups, bullets, particles, floaters,
     score: 0, combo: 0, mult: 1, lives: LIVES, level: 0,
-    bricksLeft: 0, elapsed: 0, shake: 0, slow: 0, fast: 0,
+    bricksLeft: 0, elapsed: 0, shake: 0, slow: 0, fast: 0, pierce: 0,
     laserCooldown: 0, serveTimer: 0, levelCleared: false, won: false, lastBonus: 0,
   };
 
@@ -66,6 +70,7 @@ export function createWorld(random) {
     if (kind === KIND_HARD) return SCORE.hard;
     if (kind === KIND_TOUGH) return SCORE.tough;
     if (kind === KIND_BONUS) return SCORE.bonus;
+    if (kind === KIND_BOSS) return SCORE.boss;
     return SCORE.brick;
   }
 
@@ -82,6 +87,7 @@ export function createWorld(random) {
     state.elapsed = 0;
     state.slow = 0;
     state.fast = 0;
+    state.pierce = 0;
     paddle.width = PADDLE.width;
     paddle.targetWidth = PADDLE.width;
     paddle.laser = 0;
@@ -93,16 +99,24 @@ export function createWorld(random) {
       for (let col = 0; col < line.length; col += 1) {
         const cell = line[col];
         if (cell === '.') continue;
-        const kind = cell === '2' ? KIND_HARD : cell === '3' ? KIND_TOUGH : cell === 'X' ? KIND_STEEL : cell === 'B' ? KIND_BONUS : KIND_NORMAL;
-        const hp = kind === KIND_HARD ? 2 : kind === KIND_TOUGH ? 3 : 1;
-        bricks.push({
-          x: BRICK.left + col * (BRICK.width + BRICK.gapX),
-          y: BRICK.top + row * (BRICK.height + BRICK.gapY),
+        const kind = cell === '2' ? KIND_HARD : cell === '3' ? KIND_TOUGH : cell === 'X' ? KIND_STEEL : cell === 'B' ? KIND_BONUS : cell === 'v' ? KIND_MOVING : cell === 'K' ? KIND_BOSS : KIND_NORMAL;
+        const hp = kind === KIND_HARD ? 2 : kind === KIND_TOUGH ? 3 : kind === KIND_MOVING ? 2 : kind === KIND_BOSS ? 5 : 1;
+        const bx = BRICK.left + col * (BRICK.width + BRICK.gapX);
+        const brick = {
+          x: bx, y: BRICK.top + row * (BRICK.height + BRICK.gapY),
           width: BRICK.width, height: BRICK.height,
           hp, maxHp: hp, kind, row,
-          color: kind === KIND_STEEL ? PALETTE.unbreakable : kind === KIND_BONUS ? PALETTE.gold : PALETTE.rows[row % PALETTE.rows.length],
+          color: kind === KIND_STEEL ? PALETTE.unbreakable : kind === KIND_BONUS ? PALETTE.gold : kind === KIND_MOVING ? PALETTE.moving : kind === KIND_BOSS ? PALETTE.boss : PALETTE.rows[row % PALETTE.rows.length],
           alive: true,
-        });
+        };
+        if (kind === KIND_MOVING) {
+          // Drifting bricks slide sideways around their home column, each on its own phase.
+          brick.baseX = bx;
+          brick.range = 58;
+          brick.speed = 0.7 + (row % 3) * 0.22;
+          brick.phase = (col * 0.9 + row * 1.7) % (Math.PI * 2);
+        }
+        bricks.push(brick);
         if (kind !== KIND_STEEL) state.bricksLeft += 1;
       }
     }
@@ -210,6 +224,8 @@ export function createWorld(random) {
       state.lives = Math.min(MAX_LIVES, state.lives + 1);
     } else if (type === 'C') {
       paddle.catch = DURATION.catch;
+    } else if (type === 'G') {
+      state.pierce = DURATION.pierce;
     }
     return info.good ? EVENT_POWERUP : EVENT_BAD;
   }
@@ -232,10 +248,16 @@ export function createWorld(random) {
     state.mult = Math.min(COMBO.maxMult, 1 + Math.floor(state.combo / COMBO.perStep));
     const points = brickPoints(brick.kind) * state.mult;
     state.score += points;
-    burst(brick.x + brick.width / 2, brick.y + brick.height / 2, brick.color, 12, 260);
+    burst(brick.x + brick.width / 2, brick.y + brick.height / 2, brick.color, brick.kind === KIND_BOSS ? 30 : 12, brick.kind === KIND_BOSS ? 420 : 260);
     floater(brick.x + brick.width / 2, brick.y, `+${points}`, brick.color);
     events |= EVENT_BRICK;
-    if (brick.kind === KIND_BONUS) dropPowerup(brick.x + brick.width / 2, brick.y + brick.height, true);
+    if (brick.kind === KIND_BOSS) {
+      // A boss pays twice: two capsules, a shake, and its own sound.
+      state.shake = 12;
+      dropPowerup(brick.x + brick.width / 2 - 20, brick.y + brick.height, true);
+      dropPowerup(brick.x + brick.width / 2 + 20, brick.y + brick.height, true);
+      events |= EVENT_BOSS;
+    } else if (brick.kind === KIND_BONUS) dropPowerup(brick.x + brick.width / 2, brick.y + brick.height, true);
     else dropPowerup(brick.x + brick.width / 2, brick.y + brick.height, false);
     if (state.bricksLeft === 0 && !state.levelCleared) {
       state.levelCleared = true;
@@ -312,6 +334,13 @@ export function createWorld(random) {
     if (state.laserCooldown > 0) state.laserCooldown -= dt;
     if (state.slow > 0) state.slow -= dt;
     if (state.fast > 0) state.fast -= dt;
+    if (state.pierce > 0) state.pierce -= dt;
+    // Drifting bricks slide sideways around their home column, clamped to the field.
+    for (const brick of bricks) {
+      if (brick.alive && brick.kind === KIND_MOVING) {
+        brick.x = Math.min(FIELD.width - brick.width, Math.max(0, brick.baseX + Math.sin(state.elapsed * brick.speed + brick.phase) * brick.range));
+      }
+    }
     if (paddle.laser > 0) paddle.laser -= dt;
     if (paddle.catch > 0) paddle.catch -= dt;
     if (paddle.wide > 0) {
@@ -390,12 +419,17 @@ export function createWorld(random) {
         if (dx * dx + dy * dy > BALL.radius * BALL.radius) continue;
         const overlapX = Math.min(ball.x + BALL.radius - brick.x, brick.x + brick.width - (ball.x - BALL.radius));
         const overlapY = Math.min(ball.y + BALL.radius - brick.y, brick.y + brick.height - (ball.y - BALL.radius));
-        if (overlapX < overlapY) ball.vx = -ball.vx;
-        else ball.vy = -ball.vy;
-        if (demo) {
-          burst(ball.x, ball.y, brick.color, 3, 120);
-        } else {
+        if (state.pierce > 0 && brick.kind !== KIND_STEEL) {
+          // A ghost ball passes straight through a breakable brick: no bounce.
           events |= damageBrick(brick);
+        } else {
+          if (overlapX < overlapY) ball.vx = -ball.vx;
+          else ball.vy = -ball.vy;
+          if (demo) {
+            burst(ball.x, ball.y, brick.color, 3, 120);
+          } else {
+            events |= damageBrick(brick);
+          }
         }
         break;
       }

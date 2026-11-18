@@ -8,7 +8,7 @@
 // screenshot.
 import { BEST_KEY, LIVES, MUTE_KEY, STEP } from './config.js';
 import { createRandom } from './random.js';
-import { createWorld, EVENT_BAD, EVENT_BRICK, EVENT_CRACK, EVENT_LASER, EVENT_LAUNCH, EVENT_LEVEL_CLEAR, EVENT_LIFE_LOST, EVENT_OVER, EVENT_POWERUP, EVENT_STEEL, EVENT_WIN } from './world.js';
+import { createWorld, EVENT_BAD, EVENT_BOSS, EVENT_BRICK, EVENT_CRACK, EVENT_LASER, EVENT_LAUNCH, EVENT_LEVEL_CLEAR, EVENT_LIFE_LOST, EVENT_OVER, EVENT_POWERUP, EVENT_STEEL, EVENT_WIN } from './world.js';
 import { ACTION_CONFIRM, ACTION_MUTE, ACTION_PAUSE, createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { createRenderer, SCREEN_CLEAR, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN } from './render.js';
@@ -130,6 +130,7 @@ function runGame() {
     if (events & EVENT_BRICK) audio.brick(world.state.combo);
     if (events & EVENT_CRACK) audio.crack();
     if (events & EVENT_STEEL) audio.steel();
+    if (events & EVENT_BOSS) audio.boss();
     if (events & EVENT_POWERUP) audio.powerup();
     if (events & EVENT_BAD) audio.bad();
     if (events & EVENT_LASER) audio.laser();

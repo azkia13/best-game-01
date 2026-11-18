@@ -102,11 +102,16 @@ export function createAudio() {
     loseLife() {
       arpeggio([392, 311, 233], 0.12, 'triangle', 0.5);
     },
+    /** A boss brick falls: a deep boom under a bright chime. */
+    boss() {
+      tone(90, 0.3, 'sawtooth', 0.55, 45);
+      arpeggio([784, 1047, 1319], 0.06, 'sine', 0.45);
+    },
     /** A level is cleared: a rising arpeggio. */
     levelClear() {
       arpeggio([523, 659, 784, 1047], 0.09, 'triangle', 0.5);
     },
-    /** All six levels cleared: the fanfare. */
+    /** All eight levels cleared: the fanfare. */
     win() {
       arpeggio([523, 659, 784, 1047, 1319, 1568], 0.11, 'triangle', 0.55);
     },
