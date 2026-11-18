@@ -4,7 +4,16 @@
 [![rank](https://make.fun/badge/best-game-01/azkia13/best-game-01/rank.svg)](https://make.fun/bounty/best-game-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
 [![reward](https://make.fun/badge/best-game-01/azkia13/best-game-01/reward.svg)](https://make.fun/bounty/best-game-01?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
 
-Neon Breaker: a neon Breakout game with 12 hand-designed levels, 9 power-up capsules (including the Ghost ball, which passes through bricks), drifting bricks that slide sideways, boss bricks worth 500 points, moving drone enemies, sinking bricks that cost a life if they land, a real boss fight against the Core, a shard economy with an upgrade shop between levels, and an endless mode with a local leaderboard — combo scoring, particles, screen shake and synthesized sound, all in plain static files with no libraries and no network.
+Neon Breaker: a neon Breakout game with 15 hand-designed levels, 10 power-up capsules (including the Ghost ball, which passes through bricks, and the Fireball, which burns through any brick in one hit), explosive bricks that chain-react across a row, drifting bricks that slide sideways, boss bricks worth 500 points, moving drone enemies, sinking bricks that cost a life if they land, two boss fights against the Core, a shard economy with an upgrade shop between levels, flawless-level bonuses, and an endless mode with a local leaderboard — combo scoring, particles, screen shake and synthesized sound, all in plain static files with no libraries and no network.
+
+## What's new in v4
+
+- **Three new levels**: *Chain Reaction* (13) introduces explosive bricks — break one and it blows up every brick touching it, so one spark can chain across a row; *Neon Storm* (14) throws drifters, sinkers, drones and explosives at you at once; *The Final Core* (15) is a second boss fight — the Core returns with 18 hits and faster fire, guarded by explosives.
+- **Fireball power-up (R)**: for 10 seconds the ball burns through any brick in one hit, however tough — with a burning halo, a longer trail and its own HUD label.
+- **Flawless bonus**: clear a level without losing a life and it pays +1000 on top of the life bonus, announced on the level-clear panel.
+- **Level banners**: each level opens with its name big on screen, so you always know where you are.
+- **Feel fixes**: the ball now leaves a three-segment fading trail; the paddle and wall bounces finally have sounds (they were silent in v3); explosive bricks have their own boom.
+- **Screenshots**: the play shot now stages the final boss fight, and the win shot is the real YOU WIN screen after a full 15-level campaign.
 
 ## What's new in v3
 

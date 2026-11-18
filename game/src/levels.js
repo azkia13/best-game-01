@@ -5,7 +5,9 @@
 //   'v' a drifting brick (2 hits, slides sideways — time your shot)
 //   'K' a boss brick (5 hits, worth 500, drops two power-ups when it falls)
 //   's' a sinking brick (2 hits, sinks toward the paddle — break it before it lands)
+//   'e' an explosive brick (1 hit — blows up and damages every brick touching it)
 // A level may also field drones (moving enemies, `drones`) or a boss (`boss: true`).
+// A boss level may override the fight: `bossHp` and `bossFire` (seconds between volleys).
 // A level is won when every breakable brick is gone (and the boss is dead, where there is
 // one); unbreakable bricks never have to break.
 // The layouts are data, not code: the world builds its bricks from them.
@@ -146,6 +148,47 @@ export const LEVELS = [
       '..oooooooo..',
       '.oKKooooKKo.',
       'oooooooooooo',
+      '..22222222..',
+    ],
+  },
+  {
+    name: 'Chain Reaction',
+    tip: 'Orange bricks explode and take their neighbours with them — set off a chain.',
+    rows: [
+      '..eeeeeeee..',
+      '.eooooooooe.',
+      'oeooeooeoooo',
+      'oooooooooooo',
+      '.oBeeeeeeBo.',
+      '..22222222..',
+    ],
+  },
+  {
+    name: 'Neon Storm',
+    tip: 'Everything at once: drifters, sinkers, drones and explosives. Spend your shards.',
+    drones: 5,
+    rows: [
+      '..vvvvvvvv..',
+      '.esssssssse.',
+      'oeoevvvvvoeo',
+      'oooooooooooo',
+      '2oeoBBBBBeo2',
+      '..22222222..',
+    ],
+  },
+  {
+    name: 'The Final Core',
+    tip: 'THE FINAL BOSS: the Core returns with 18 hits and faster fire. Break its explosive guard first.',
+    boss: true,
+    bossHp: 18,
+    bossFire: 2.8,
+    drones: 3,
+    rows: [
+      '............',
+      '..eeeeeeee..',
+      '.eKKooooKKe.',
+      'oooooooooooo',
+      '.o2eooooe2o.',
       '..22222222..',
     ],
   },

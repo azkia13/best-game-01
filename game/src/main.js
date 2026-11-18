@@ -8,7 +8,7 @@
 // screenshot.
 import { BEST_KEY, BOARD_KEY, LIVES, MUTE_KEY, STEP, UPGRADES } from './config.js';
 import { createRandom } from './random.js';
-import { createWorld, EVENT_BAD, EVENT_BOSS, EVENT_BOSS_DEAD, EVENT_BOSS_HIT, EVENT_BRICK, EVENT_CRACK, EVENT_DRONE, EVENT_LASER, EVENT_LAUNCH, EVENT_LEVEL_CLEAR, EVENT_LIFE_LOST, EVENT_OVER, EVENT_POWERUP, EVENT_SHARD, EVENT_SHIELD_SAVE, EVENT_SINKER_LAND, EVENT_STEEL, EVENT_STUN, EVENT_WIN } from './world.js';
+import { createWorld, EVENT_BAD, EVENT_BOSS, EVENT_BOSS_DEAD, EVENT_BOSS_HIT, EVENT_BRICK, EVENT_CRACK, EVENT_DRONE, EVENT_EXPLODE, EVENT_LASER, EVENT_LAUNCH, EVENT_LEVEL_CLEAR, EVENT_LIFE_LOST, EVENT_OVER, EVENT_PADDLE, EVENT_POWERUP, EVENT_SHARD, EVENT_SHIELD_SAVE, EVENT_SINKER_LAND, EVENT_STEEL, EVENT_STUN, EVENT_WALL, EVENT_WIN } from './world.js';
 import { ACTION_CONFIRM, ACTION_MUTE, ACTION_PAUSE, createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { createRenderer, SCREEN_CLEAR, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_SHOP, SCREEN_TITLE, SCREEN_WIN } from './render.js';
@@ -100,6 +100,7 @@ function runShot(name) {
       best: scene.best,
       levelName: LEVELS[world.state.level].name,
       clearBonus: scene.clearBonus ?? 0,
+      flawless: scene.flawless ?? false,
       muted: false,
       board: scene.board ?? [],
     });
@@ -171,6 +172,9 @@ function runGame() {
     if (events & EVENT_BRICK) audio.brick(world.state.combo);
     if (events & EVENT_CRACK) audio.crack();
     if (events & EVENT_STEEL) audio.steel();
+    if (events & EVENT_PADDLE) audio.paddle();
+    if (events & EVENT_WALL) audio.wall();
+    if (events & EVENT_EXPLODE) audio.explosion();
     if (events & EVENT_BOSS) audio.boss();
     if (events & EVENT_BOSS_HIT) audio.bossHit();
     if (events & EVENT_BOSS_DEAD) audio.boss();
@@ -289,6 +293,7 @@ function runGame() {
       best,
       levelName: LEVELS[world.state.level].name,
       clearBonus,
+      flawless: world.state.lastFlawless,
       muted: audio.isMuted(),
       board,
     });

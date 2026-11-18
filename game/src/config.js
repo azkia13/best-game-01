@@ -50,10 +50,13 @@ export const POWERUP = {
 };
 
 /** Points for one brick, before the combo multiplier; clearing a level pays a bonus per life left. */
-export const SCORE = { brick: 50, hard: 80, tough: 120, bonus: 150, boss: 500, levelBonus: 500, drone: 200, bossHit: 25, projectile: 10 };
+export const SCORE = { brick: 50, hard: 80, tough: 120, bonus: 150, boss: 500, levelBonus: 500, drone: 200, bossHit: 25, projectile: 10, explosive: 100 };
+
+/** A level cleared without losing a life pays this on top of the life bonus. */
+export const FLAWLESS_BONUS = 1000;
 
 /** Shards (◆) are the shop currency: bonus bricks, boss bricks and drones drop them. */
-export const SHARDS = { bonus: 2, boss: 5, drone: 3 };
+export const SHARDS = { bonus: 2, boss: 5, drone: 3, explosive: 1 };
 
 /** The upgrade shop between levels: id, key, name, cost in shards, what it does, max stacks. */
 export const UPGRADES = [
@@ -81,7 +84,10 @@ export const SINKER = { fallSpeed: 9, dangerY: 560 };
 export const ENDLESS = { bossEvery: 5, baseRows: 3, maxRows: 6 };
 
 /** How long each timed effect lasts, in seconds. */
-export const DURATION = { wide: 14, narrow: 10, laser: 12, slow: 9, fast: 8, catch: 14, pierce: 8 };
+export const DURATION = { wide: 14, narrow: 10, laser: 12, slow: 9, fast: 8, catch: 14, pierce: 8, fire: 10 };
+
+/** Seconds the level banner stays on screen after a level (or wave) loads. */
+export const BANNER_SECONDS = 2.2;
 
 /** Seconds the ball waits stuck to the paddle before the autopilot serves it in a screenshot. */
 export const SERVE_WAIT = 0.6;
@@ -102,6 +108,8 @@ export const PALETTE = {
   unbreakableDark: '#565e73',
   moving: '#38bdf8',
   boss: '#ff5470',
+  explosive: '#ff7a1a',
+  fireball: '#ff9f1c',
   ghost: '#7dd3fc',
   panel: '#10182e',
   panelEdge: '#2a3a5f',

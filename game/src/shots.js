@@ -3,11 +3,14 @@
 // game really looks like and the same seed always gives the same frame.
 import { BALL, FIELD, PADDLE, SERVE_WAIT, STEP } from './config.js';
 import { EVENT_LEVEL_CLEAR, EVENT_OVER, EVENT_WIN, KIND_STEEL } from './world.js';
+import { LEVELS } from './levels.js';
 import { SCREEN_CLEAR, SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN } from './render.js';
 
 const START_SECONDS = 4;
-const PLAY_SECONDS = 40;
+const PLAY_SECONDS = 18;
 const LIMIT_SECONDS = 600;
+/** One campaign level may take the pilot a long while (level 6 took 746 s of sim). */
+const CAMPAIGN_LIMIT_SECONDS = 1500;
 const SAMPLE = 1 / 60;
 
 /** Where the ball will cross the paddle's line, from its current flight. */
@@ -27,8 +30,9 @@ function landingX(ball) {
  * centred return (which would send the ball straight up and down one column forever)
  * never happens. `skill` is 1 for a good player and near 0 for a hurried one: the bad
  * pilot reads the landing spot late and often picks the wrong side, so it loses its lives.
+ * Exported so the headless full-game test drives the same pilot the screenshots use.
  */
-function autopilot(state, skill, random) {
+export function autopilot(state, skill, random) {
   const ball = state.balls.find((b) => !b.stuck);
   if (!ball) return 0;
   // Dodge boss fire: a shot falling onto the paddle's span means step aside —
@@ -50,14 +54,29 @@ function autopilot(state, skill, random) {
   }
   const target = landingX(ball);
   const centre = state.paddle.x + state.paddle.width / 2;
-  // Aim at the lowest brick still standing, nearest to the ball's line — or at the
-  // boss, once the bricks are gone.
+  // Aim at a brick that is still standing — but the target cycles every 18 s
+  // between the lowest, the highest and the nearest brick: a fixed target can
+  // loop the ball forever against steel, and a target that changes with time
+  // breaks the cycle. (The level clock resets on every level, so each level
+  // gets a fresh cycle.)
+  const phase = Math.floor(state.elapsed / 18) % 3;
   let aimX = null;
   let aimY = null;
   let brick = null;
   for (const b of state.bricks) {
     if (!b.alive || b.kind === KIND_STEEL) continue;
-    if (brick === null || b.y > brick.y || (b.y === brick.y && Math.abs(b.x + b.width / 2 - ball.x) < Math.abs(brick.x + brick.width / 2 - ball.x))) brick = b;
+    if (brick === null) {
+      brick = b;
+      continue;
+    }
+    const nearer = Math.abs(b.x + b.width / 2 - ball.x) < Math.abs(brick.x + brick.width / 2 - ball.x);
+    if (phase === 0) {
+      if (b.y > brick.y || (b.y === brick.y && nearer)) brick = b;
+    } else if (phase === 1) {
+      if (b.y < brick.y || (b.y === brick.y && nearer)) brick = b;
+    } else if (nearer) {
+      brick = b;
+    }
   }
   if (brick !== null) {
     aimX = brick.x + brick.width / 2;
@@ -96,6 +115,26 @@ function playForward(world, seconds, skill, random) {
 }
 
 /**
+ * Play the whole campaign with the autopilot, buying shop upgrades between levels the
+ * way a good player would (shield first, then wide, laser, life, magnet). Returns
+ * EVENT_WIN when the campaign is won, or the event that stopped it.
+ */
+function playCampaign(world, random) {
+  for (let level = 0; level < LEVELS.length; level += 1) {
+    const events = playForward(world, CAMPAIGN_LIMIT_SECONDS, 1, random);
+    if (events & EVENT_WIN) return events;
+    if (events & EVENT_OVER) return events;
+    if (!(events & EVENT_LEVEL_CLEAR)) return 0;
+    // The shop, between levels: spend shards greedily, shield first.
+    for (const id of ['shield', 'wide', 'laser', 'life', 'magnet']) {
+      while (world.buyUpgrade(id)) { /* bought */ }
+    }
+    if (level + 1 < LEVELS.length) world.loadLevel(level + 1);
+  }
+  return 0;
+}
+
+/**
  * Set `world` to the named scene (start, play, win or end; any other name is start) and
  * return the screen to draw over it and the best score to show.
  */
@@ -109,15 +148,19 @@ export function stageShot(name, world, random) {
     return { screen: SCREEN_TITLE, best: 0, board: [] };
   }
   if (name === 'play') {
-    // The play shot stages level 12, the boss fight: the Core firing, drones out.
-    world.loadLevel(11);
+    // The play shot stages level 15, the final boss fight: the Core firing, drones out.
+    world.loadLevel(14);
     playForward(world, PLAY_SECONDS, 1, random);
     return { screen: SCREEN_PLAY, best: world.state.score, board: [] };
   }
   if (name === 'win') {
-    // Play level one for real until it is cleared: the level-clear panel is the win shot.
-    const events = playForward(world, LIMIT_SECONDS, 1, random);
-    if (events & EVENT_LEVEL_CLEAR) return { screen: SCREEN_CLEAR, best: world.state.score, clearBonus: world.state.lastBonus, board: [] };
+    // Play the whole campaign for real: the win shot is the true YOU WIN screen,
+    // with the final score. If the pilot ever fails, fall back to a level-1 clear.
+    const events = playCampaign(world, random);
+    if (events & EVENT_WIN) return { screen: SCREEN_WIN, best: world.state.score, board: [] };
+    world.reset();
+    const clear = playForward(world, LIMIT_SECONDS, 1, random);
+    if (clear & EVENT_LEVEL_CLEAR) return { screen: SCREEN_CLEAR, best: world.state.score, clearBonus: world.state.lastBonus, flawless: world.state.lastFlawless, board: [] };
     return { screen: SCREEN_PLAY, best: world.state.score, board: [] };
   }
   // End: a hurried pilot that reads the ball late and often goes the wrong way.

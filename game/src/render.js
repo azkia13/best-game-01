@@ -3,7 +3,7 @@
 // colour. Neon glow is used where it earns its cost: the ball, the paddle and the capsules;
 // the bricks carry their colour in a flat face and a bright top edge instead.
 import { BALL, BOSS, BRICK, DRONE, FIELD, FONT, LIVES, MAX_LIVES, PALETTE, PADDLE, SINKER, UPGRADES } from './config.js';
-import { KIND_BONUS, KIND_BOSS, KIND_HARD, KIND_MOVING, KIND_SINKER, KIND_STEEL, KIND_TOUGH, POWERUP_INFO } from './world.js';
+import { KIND_BONUS, KIND_BOSS, KIND_EXPLOSIVE, KIND_HARD, KIND_MOVING, KIND_SINKER, KIND_STEEL, KIND_TOUGH, POWERUP_INFO } from './world.js';
 import { LEVELS } from './levels.js';
 
 export const SCREEN_TITLE = 'title';
@@ -166,6 +166,9 @@ export function createRenderer(canvas) {
         context.fillRect(brick.x + brick.width - 13, brick.y + 6, 3, 3);
       } else if (brick.kind === KIND_BONUS) {
         text('★', brick.x + brick.width / 2, brick.y + brick.height / 2 + 7, 18, '#3a2b00', 'center', 700);
+      } else if (brick.kind === KIND_EXPLOSIVE) {
+        // A lit fuse star: this brick blows up when it breaks.
+        text('✸', brick.x + brick.width / 2, brick.y + brick.height / 2 + 8, 20, '#3a1c00', 'center', 800);
       } else if (brick.hp === 2 && brick.kind !== KIND_MOVING && brick.kind !== KIND_BOSS) {
         context.strokeStyle = 'rgba(0,0,0,0.45)';
         context.lineWidth = 2;
@@ -217,6 +220,17 @@ export function createRenderer(canvas) {
 
   function drawBalls(state) {
     for (const ball of state.balls) {
+      const fire = state.fire > 0;
+      if (fire) {
+        // A fireball wears a burning halo: it breaks any brick in one hit.
+        context.save();
+        context.globalAlpha = 0.3 + 0.12 * Math.sin(state.elapsed * 9);
+        context.fillStyle = PALETTE.fireball;
+        context.beginPath();
+        context.arc(ball.x, ball.y, BALL.radius + 9, 0, Math.PI * 2);
+        context.fill();
+        context.restore();
+      }
       if (state.pierce > 0) {
         // A ghost ball wears a pale halo: it passes through bricks.
         context.save();
@@ -228,20 +242,26 @@ export function createRenderer(canvas) {
         context.restore();
       }
       context.save();
-      context.shadowColor = state.pierce > 0 ? PALETTE.ghost : PALETTE.ballTrail;
-      context.shadowBlur = 16;
-      context.fillStyle = PALETTE.ball;
+      context.shadowColor = fire ? PALETTE.fireball : state.pierce > 0 ? PALETTE.ghost : PALETTE.ballTrail;
+      context.shadowBlur = fire ? 22 : 16;
+      context.fillStyle = fire ? '#ffd60a' : PALETTE.ball;
       context.beginPath();
       context.arc(ball.x, ball.y, BALL.radius, 0, Math.PI * 2);
       context.fill();
       context.restore();
       if (!ball.stuck) {
-        context.strokeStyle = state.pierce > 0 ? 'rgba(125,211,252,0.55)' : 'rgba(34,211,238,0.45)';
-        context.lineWidth = 3;
-        context.beginPath();
-        context.moveTo(ball.x - ball.vx * 0.03, ball.y - ball.vy * 0.03);
-        context.lineTo(ball.x, ball.y);
-        context.stroke();
+        // A three-segment trail, fading back along the flight path.
+        const trailColor = fire ? '255,159,28' : state.pierce > 0 ? '125,211,252' : '34,211,238';
+        for (let seg = 0; seg < 3; seg += 1) {
+          const back = 0.028 + seg * 0.026;
+          const ahead = 0.004 + seg * 0.026;
+          context.strokeStyle = `rgba(${trailColor},${(0.5 - seg * 0.15).toFixed(2)})`;
+          context.lineWidth = 3 - seg * 0.8;
+          context.beginPath();
+          context.moveTo(ball.x - ball.vx * back, ball.y - ball.vy * back);
+          context.lineTo(ball.x - ball.vx * ahead, ball.y - ball.vy * ahead);
+          context.stroke();
+        }
       }
     }
   }
@@ -402,6 +422,9 @@ export function createRenderer(canvas) {
     if (state.pierce > 0) {
       text('GHOST BALL', FIELD.width - 24, HUD_TOP + 60, 18, PALETTE.ghost, 'right', 800);
     }
+    if (state.fire > 0) {
+      text('FIREBALL', FIELD.width - 24, HUD_TOP + 86, 18, PALETTE.fireball, 'right', 800);
+    }
     // Thin progress bar: how much of this level is cleared.
     const total = state.bricks.length > 0 ? state.bricks.filter((b) => b.kind !== KIND_STEEL).length : 1;
     const done = total - state.bricksLeft;
@@ -470,8 +493,19 @@ export function createRenderer(canvas) {
     return board.slice(0, 5).map((entry, i) => `${i + 1}.  ${entry.score} pts · wave ${entry.wave} · ${entry.date}`);
   }
 
+  function drawBanner(state, levelName) {
+    // The level's name, big and centre, for the first seconds of the level.
+    const alpha = Math.min(1, state.levelBanner / 0.6);
+    context.save();
+    context.globalAlpha = alpha;
+    const label = state.endless ? `WAVE ${state.wave}` : `LEVEL ${state.level + 1}`;
+    text(label, FIELD.width / 2, FIELD.height / 2 - 70, 30, PALETTE.gold, 'center', 800);
+    text(levelName, FIELD.width / 2, FIELD.height / 2 - 16, 54, PALETTE.text, 'center', 800);
+    context.restore();
+  }
+
   function draw(state, screen, ui) {
-    const { best, levelName, clearBonus, muted, board } = ui;
+    const { best, levelName, clearBonus, flawless, muted, board } = ui;
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.fillStyle = PALETTE.backdrop;
     context.fillRect(0, 0, canvas.width, canvas.height);
@@ -495,7 +529,7 @@ export function createRenderer(canvas) {
         'Break every brick. Keep the ball alive.',
         'Mouse or ← → to move · Space to serve and fire',
         'Catch the falling capsules — some help, some hurt.',
-        `${LEVELS.length} levels · drones · sinking bricks · a boss · endless mode`,
+        `${LEVELS.length} levels · explosives · drones · bosses · endless mode`,
         `Best ${best} · Shards buy upgrades between levels`,
         ...boardLines.map((line) => `★ ${line}`),
       ], 'Space to start · E for Endless');
@@ -503,6 +537,7 @@ export function createRenderer(canvas) {
     }
     drawHud(state, levelName, ui);
     if (muted) text('MUTED', FIELD.width - 24, FIELD.height - 34, 16, PALETTE.muted, 'right', 600);
+    if (screen === SCREEN_PLAY && state.levelBanner > 0) drawBanner(state, levelName);
     if (screen === SCREEN_PAUSED) {
       drawPanel('Paused', ['The ball waits for you.'], 'Press P to resume');
     } else if (screen === SCREEN_SHOP) {
@@ -515,11 +550,12 @@ export function createRenderer(canvas) {
       drawPanel(state.endless ? `Wave ${state.wave} clear!` : `Level ${state.level + 1} clear!`, [
         `${levelName} is done.`,
         `Level bonus +${clearBonus} · Score ${state.score} · Shards ◆ ${state.shards}`,
+        flawless ? 'FLAWLESS — no life lost! +1000 included.' : 'A life was lost — clear it clean next time for +1000.',
         nextLine,
       ], 'Press Space for the upgrade shop', PALETTE.gold);
     } else if (screen === SCREEN_WIN) {
       drawPanel('YOU WIN!', [
-        `All ${LEVELS.length} levels cleared — including the Core.`,
+        `All ${LEVELS.length} levels cleared — both Cores defeated.`,
         `Final score ${state.score} · Best ${Math.max(best, state.score)}`,
         state.score >= best && best > 0 ? 'A new best score!' : 'The neon is yours.',
       ], 'Space to play again · E for Endless');

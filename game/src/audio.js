@@ -102,6 +102,11 @@ export function createAudio() {
     loseLife() {
       arpeggio([392, 311, 233], 0.12, 'triangle', 0.5);
     },
+    /** An explosive brick blows: a deep boom under a bright crack. */
+    explosion() {
+      tone(70, 0.28, 'sawtooth', 0.55, 38);
+      tone(440, 0.12, 'square', 0.3, 110);
+    },
     /** A boss brick falls: a deep boom under a bright chime. */
     boss() {
       tone(90, 0.3, 'sawtooth', 0.55, 45);

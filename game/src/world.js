@@ -3,7 +3,7 @@
 // text. step() advances one fixed step and returns what happened as bit flags, so the caller
 // can react (sound, announcements) without the world knowing about screens or sound.
 // Nothing here allocates after createWorld returns, except the short particle lists.
-import { BALL, BOSS, BRICK, COMBO, DRONE, DURATION, ENDLESS, FIELD, LIVES, MAX_LIVES, PADDLE, PALETTE, POWERUP, SCORE, SHARDS, SINKER, UPGRADES } from './config.js';
+import { BALL, BANNER_SECONDS, BOSS, BRICK, COMBO, DRONE, DURATION, ENDLESS, FIELD, FLAWLESS_BONUS, LIVES, MAX_LIVES, PADDLE, PALETTE, POWERUP, SCORE, SHARDS, SINKER, UPGRADES } from './config.js';
 import { LEVELS } from './levels.js';
 
 export const EVENT_BRICK = 1;
@@ -25,6 +25,9 @@ export const EVENT_SHIELD_SAVE = 32768;
 export const EVENT_SINKER_LAND = 65536;
 export const EVENT_BOSS_DEAD = 131072;
 export const EVENT_STUN = 262144;
+export const EVENT_PADDLE = 524288;
+export const EVENT_WALL = 1048576;
+export const EVENT_EXPLODE = 2097152;
 
 export const KIND_NORMAL = 0;
 export const KIND_HARD = 1;
@@ -34,6 +37,7 @@ export const KIND_BONUS = 4;
 export const KIND_MOVING = 5;
 export const KIND_BOSS = 6;
 export const KIND_SINKER = 7;
+export const KIND_EXPLOSIVE = 8;
 
 /** The capsule letters, what they do, and whether catching one is good news. */
 export const POWERUP_INFO = {
@@ -44,12 +48,13 @@ export const POWERUP_INFO = {
   E: { label: 'Extra life', good: true, color: '#f2c94c' },
   C: { label: 'Catch', good: true, color: '#a855f7' },
   G: { label: 'Ghost ball', good: true, color: '#7dd3fc' },
+  R: { label: 'Fireball', good: true, color: '#ff9f1c' },
   N: { label: 'Narrow paddle', good: false, color: '#8b93b8' },
   F: { label: 'Fast ball', good: false, color: '#ff8a00' },
 };
-const POWERUP_KEYS = ['W', 'M', 'L', 'S', 'E', 'C', 'G', 'N', 'F'];
+const POWERUP_KEYS = ['W', 'M', 'L', 'S', 'E', 'C', 'G', 'R', 'N', 'F'];
 /** How often each capsule is the one that drops, out of 100. */
-const POWERUP_WEIGHTS = { W: 18, M: 16, L: 14, S: 12, E: 6, C: 12, G: 10, N: 6, F: 6 };
+const POWERUP_WEIGHTS = { W: 16, M: 15, L: 13, S: 11, E: 6, C: 11, G: 9, R: 9, N: 5, F: 5 };
 
 const MAX_PARTICLES = 400;
 const LASER_COOLDOWN = 0.18;
@@ -76,7 +81,8 @@ export function createWorld(random) {
     laserCooldown: 0, serveTimer: 0, levelCleared: false, won: false, lastBonus: 0,
     shards: 0, upgrades: { wide: 0, magnet: 0, laser: 0, shield: 0, life: 0 },
     shieldReady: false, endless: false, wave: 0, boss: null, bossDead: false,
-    dronesToSpawn: 0, droneTimer: 0,
+    dronesToSpawn: 0, droneTimer: 0, fire: 0, livesAtLevelStart: LIVES,
+    lastFlawless: false, levelBanner: 0,
   };
 
   /** The paddle's resting width, grown forever by Wide Paddle+ upgrades. */
@@ -109,6 +115,7 @@ export function createWorld(random) {
     if (kind === KIND_BONUS) return SCORE.bonus;
     if (kind === KIND_BOSS) return SCORE.boss;
     if (kind === KIND_SINKER) return SCORE.tough;
+    if (kind === KIND_EXPLOSIVE) return SCORE.explosive;
     return SCORE.brick;
   }
 
@@ -139,6 +146,10 @@ export function createWorld(random) {
     state.bossDead = false;
     state.dronesToSpawn = level.drones ?? 0;
     state.droneTimer = 3;
+    state.fire = 0;
+    state.livesAtLevelStart = state.lives;
+    state.lastFlawless = false;
+    state.levelBanner = BANNER_SECONDS;
     paddle.width = baseWidth();
     paddle.targetWidth = baseWidth();
     paddle.laser = 0;
@@ -151,14 +162,14 @@ export function createWorld(random) {
       for (let col = 0; col < line.length; col += 1) {
         const cell = line[col];
         if (cell === '.') continue;
-        const kind = cell === '2' ? KIND_HARD : cell === '3' ? KIND_TOUGH : cell === 'X' ? KIND_STEEL : cell === 'B' ? KIND_BONUS : cell === 'v' ? KIND_MOVING : cell === 'K' ? KIND_BOSS : cell === 's' ? KIND_SINKER : KIND_NORMAL;
+        const kind = cell === '2' ? KIND_HARD : cell === '3' ? KIND_TOUGH : cell === 'X' ? KIND_STEEL : cell === 'B' ? KIND_BONUS : cell === 'v' ? KIND_MOVING : cell === 'K' ? KIND_BOSS : cell === 's' ? KIND_SINKER : cell === 'e' ? KIND_EXPLOSIVE : KIND_NORMAL;
         const hp = kind === KIND_HARD ? 2 : kind === KIND_TOUGH ? 3 : kind === KIND_MOVING ? 2 : kind === KIND_BOSS ? 5 : kind === KIND_SINKER ? 2 : 1;
         const bx = BRICK.left + col * (BRICK.width + BRICK.gapX);
         const brick = {
           x: bx, y: BRICK.top + row * (BRICK.height + BRICK.gapY),
           width: BRICK.width, height: BRICK.height,
           hp, maxHp: hp, kind, row,
-          color: kind === KIND_STEEL ? PALETTE.unbreakable : kind === KIND_BONUS ? PALETTE.gold : kind === KIND_MOVING ? PALETTE.moving : kind === KIND_BOSS ? PALETTE.boss : kind === KIND_SINKER ? '#9aa3b8' : PALETTE.rows[row % PALETTE.rows.length],
+          color: kind === KIND_STEEL ? PALETTE.unbreakable : kind === KIND_BONUS ? PALETTE.gold : kind === KIND_MOVING ? PALETTE.moving : kind === KIND_BOSS ? PALETTE.boss : kind === KIND_SINKER ? '#9aa3b8' : kind === KIND_EXPLOSIVE ? PALETTE.explosive : PALETTE.rows[row % PALETTE.rows.length],
           alive: true,
         };
         if (kind === KIND_MOVING) {
@@ -173,9 +184,13 @@ export function createWorld(random) {
       }
     }
     if (level.boss) {
+      // A boss level may override the fight: the final Core has more health and
+      // fires faster than the first one.
+      const bossHp = level.bossHp ?? BOSS.hp;
       state.boss = {
-        x: FIELD.width / 2, y: BOSS.y, hp: BOSS.hp, maxHp: BOSS.hp,
+        x: FIELD.width / 2, y: BOSS.y, hp: bossHp, maxHp: bossHp,
         fireTimer: BOSS.fireInterval, spawnTimer: BOSS.spawnInterval,
+        fireInterval: level.bossFire ?? BOSS.fireInterval,
       };
     }
     paddle.x = (FIELD.width - paddle.width) / 2;
@@ -190,7 +205,7 @@ export function createWorld(random) {
   function generateWave(n) {
     const rows = Math.min(ENDLESS.maxRows, ENDLESS.baseRows + Math.floor(n / 2));
     const lines = [];
-    const letters = ['o', 'o', 'o', '2', '3', 'B', 'v', 's'];
+    const letters = ['o', 'o', 'o', '2', '3', 'B', 'v', 's', 'e'];
     for (let row = 0; row < rows; row += 1) {
       let line = '';
       for (let col = 0; col < BRICK.cols; col += 1) {
@@ -202,7 +217,7 @@ export function createWorld(random) {
       lines.push(line);
     }
     // A wave must always have something breakable.
-    if (!lines.some((line) => /[o23Bvs]/.test(line))) lines[0] = 'oooooooooooo';
+    if (!lines.some((line) => /[o23Bvse]/.test(line))) lines[0] = 'oooooooooooo';
     return {
       name: `Wave ${n}`,
       tip: n % ENDLESS.bossEvery === 0 ? 'A boss guards this wave.' : 'The waves never stop. How far can you go?',
@@ -345,6 +360,8 @@ export function createWorld(random) {
       paddle.catch = DURATION.catch;
     } else if (type === 'G') {
       state.pierce = DURATION.pierce;
+    } else if (type === 'R') {
+      state.fire = DURATION.fire;
     }
     return info.good ? EVENT_POWERUP : EVENT_BAD;
   }
@@ -368,9 +385,12 @@ export function createWorld(random) {
     if (state.bricksLeft !== 0 || state.levelCleared) return 0;
     if (state.boss && !state.bossDead) return 0;
     state.levelCleared = true;
-    const bonus = SCORE.levelBonus * state.lives;
+    // A flawless level — no life lost since it started — pays 1000 on top.
+    state.lastFlawless = state.lives === state.livesAtLevelStart;
+    const bonus = SCORE.levelBonus * state.lives + (state.lastFlawless ? FLAWLESS_BONUS : 0);
     state.lastBonus = bonus;
     state.score += bonus;
+    if (state.lastFlawless) floater(FIELD.width / 2, FIELD.height / 2 - 80, 'FLAWLESS! +1000', PALETTE.gold);
     floater(FIELD.width / 2, FIELD.height / 2 - 40, `LEVEL BONUS +${bonus}`, PALETTE.gold);
     if (!state.endless && state.level === LEVELS.length - 1) {
       state.won = true;
@@ -379,12 +399,42 @@ export function createWorld(random) {
     return EVENT_LEVEL_CLEAR;
   }
 
+  /**
+   * The blast from one explosive brick: every living brick touching it takes one hit.
+   * The brick that blew up is already dead, so a chain can run across a row but never
+   * loop back onto itself. Returns the events the blast caused.
+   */
+  function explodeBrick(brick) {
+    let events = EVENT_EXPLODE;
+    const cx = brick.x + brick.width / 2;
+    const cy = brick.y + brick.height / 2;
+    state.shake = Math.max(state.shake, 8);
+    burst(cx, cy, PALETTE.explosive, 26, 480);
+    burst(cx, cy, PALETTE.gold, 12, 360);
+    events |= earnShards(SHARDS.explosive, cx, brick.y + brick.height + 18);
+    const blast = {
+      x: brick.x - BRICK.width - BRICK.gapX,
+      y: brick.y - BRICK.height - BRICK.gapY,
+      width: brick.width * 3 + BRICK.gapX * 2,
+      height: brick.height * 3 + BRICK.gapY * 2,
+    };
+    for (const neighbour of bricks) {
+      if (neighbour.alive && overlaps(blast, neighbour)) events |= damageBrick(neighbour);
+    }
+    return events;
+  }
+
   /** Damage one brick by one hit; returns the events it caused. */
   function damageBrick(brick) {
     let events = 0;
     if (brick.kind === KIND_STEEL) {
       burst(brick.x + brick.width / 2, brick.y + brick.height / 2, PALETTE.unbreakable, 4, 140);
       return EVENT_STEEL;
+    }
+    // A fireball burns through any brick in one hit, however tough it is.
+    if (state.fire > 0) {
+      brick.hp = 1;
+      burst(brick.x + brick.width / 2, brick.y + brick.height / 2, PALETTE.fireball, 6, 300);
     }
     brick.hp -= 1;
     if (brick.hp > 0) {
@@ -400,7 +450,11 @@ export function createWorld(random) {
     burst(brick.x + brick.width / 2, brick.y + brick.height / 2, brick.color, brick.kind === KIND_BOSS ? 30 : 12, brick.kind === KIND_BOSS ? 420 : 260);
     floater(brick.x + brick.width / 2, brick.y, `+${points}`, brick.color);
     events |= EVENT_BRICK;
-    if (brick.kind === KIND_BOSS) {
+    if (brick.kind === KIND_EXPLOSIVE) {
+      // The blast hits every brick touching this one — including other explosives,
+      // so one spark can chain across a whole row.
+      events |= explodeBrick(brick);
+    } else if (brick.kind === KIND_BOSS) {
       // A boss pays twice: two capsules, a shake, shards and its own sound.
       state.shake = 12;
       events |= earnShards(SHARDS.boss, brick.x + brick.width / 2, brick.y + brick.height + 18);
@@ -463,21 +517,29 @@ export function createWorld(random) {
     return EVENT_LASER;
   }
 
+  /**
+   * Move one ball one step. Returns 'lost' when it fell past the floor, EVENT_WALL
+   * when it bounced off a wall or the ceiling this step, or 0 when it just flew on.
+   */
   function stepBall(ball, dt, demo) {
     const speed = ballSpeed();
+    let events = 0;
     ball.x += ball.vx * dt;
     ball.y += ball.vy * dt;
     // Walls.
     if (ball.x - BALL.radius < 0) {
       ball.x = BALL.radius;
       ball.vx = Math.abs(ball.vx);
+      events |= EVENT_WALL;
     } else if (ball.x + BALL.radius > FIELD.width) {
       ball.x = FIELD.width - BALL.radius;
       ball.vx = -Math.abs(ball.vx);
+      events |= EVENT_WALL;
     }
     if (ball.y - BALL.radius < 0) {
       ball.y = BALL.radius;
       ball.vy = Math.abs(ball.vy);
+      events |= EVENT_WALL;
     }
     // The floor: in the demo the ball bounces, in play it is lost.
     if (ball.y + BALL.radius > FIELD.height) {
@@ -502,7 +564,7 @@ export function createWorld(random) {
       ball.vx = nx;
       ball.vy = ny;
     }
-    return 'alive';
+    return events;
   }
 
   /**
@@ -519,6 +581,8 @@ export function createWorld(random) {
     if (state.slow > 0) state.slow -= dt;
     if (state.fast > 0) state.fast -= dt;
     if (state.pierce > 0) state.pierce -= dt;
+    if (state.fire > 0) state.fire -= dt;
+    if (state.levelBanner > 0) state.levelBanner -= dt;
     // Drifting bricks slide sideways around their home column, clamped to the field.
     for (const brick of bricks) {
       if (brick.alive && brick.kind === KIND_MOVING) {
@@ -569,7 +633,7 @@ export function createWorld(random) {
       boss.y = BOSS.y + (1 - boss.hp / boss.maxHp) * 90;
       boss.fireTimer -= dt;
       if (boss.fireTimer <= 0) {
-        boss.fireTimer = BOSS.fireInterval;
+        boss.fireTimer = boss.fireInterval;
         // One spread, aimed near the boss with a little drift: a hazard to avoid,
         // never a shot at the paddle itself — dodging it must never cost the ball.
         const baseX = boss.x + (random() * 140 - 70);
@@ -657,6 +721,7 @@ export function createWorld(random) {
         balls.splice(i, 1);
         continue;
       }
+      events |= fate;
       // The paddle: only a ball coming down can meet it.
       if (ball.vy > 0) {
         const pad = { x: paddle.x, y: PADDLE.y, width: paddle.width, height: PADDLE.height };
@@ -674,6 +739,7 @@ export function createWorld(random) {
             ball.vy = -Math.cos(angle) * speed;
             ball.y = PADDLE.y - BALL.radius - 1;
             burst(ball.x, PADDLE.y, PALETTE.paddle, 3, 90);
+            events |= EVENT_PADDLE;
           }
         }
       }
